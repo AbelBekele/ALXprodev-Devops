@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Check if data.json exists
+if [ ! -f "data.json" ]; then
+    echo "Error: data.json not found. Please run apiAutomation-0x00 first."
+    exit 1
+fi
+
+# Extract pokemon data using jq and format with awk
+jq -r '[.name, (.types[0].type.name), .weight, .height] | @csv' data.json | \
+awk -F',' '{
+    # Convert weight from hectograms to kg
+    weight = $3/10
+    # Convert height from decimeters to meters
+    height = $4/10
+    # Capitalize first letter of name
+    name = toupper(substr($1,1,1)) substr($1,2)
+    # Capitalize first letter of type
+    type = toupper(substr($2,1,1)) substr($2,2)
+    # Print formatted string
+    printf "%s is of type %s, weighs %gkg, and is %.1fm tall.\n", 
+           name, type, weight, height
+}' | \
+# Remove quotes if present
+sed 's/"//g' 
