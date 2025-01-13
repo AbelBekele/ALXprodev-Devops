@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Define array of Pokemon
+POKEMON=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Define API base URL
+API_URL="https://pokeapi.co/api/v2/pokemon"
+
+# Create directory for Pokemon data if it doesn't exist
+mkdir -p pokemon_data
+
+# Function to convert name to lowercase
+to_lowercase() {
+    echo "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# Loop through each Pokemon
+for pokemon in "${POKEMON[@]}"; do
+    # Convert pokemon name to lowercase for API request
+    pokemon_lower=$(to_lowercase "$pokemon")
+    
+    echo "Fetching data for $pokemon..."
+    
+    # Make API request and save to json file
+    response=$(curl -s -w "%{http_code}" -o "pokemon_data/${pokemon_lower}.json" "${API_URL}/${pokemon_lower}")
+    
+    # Check HTTP status code
+    if [ "$response" -eq 200 ]; then
+        echo "Successfully saved data for $pokemon to pokemon_data/${pokemon_lower}.json"
+    else
+        echo "Error fetching data for $pokemon. Status code: $response"
+        # Log error to file
+        echo "Failed to fetch $pokemon at $(date)" >> pokemon_data/errors.log
+    fi
+    
+    # Add delay to prevent rate limiting (1 second)
+    sleep 1
+done
+
+echo "Batch processing complete!" 
