@@ -12,6 +12,27 @@ mkdir -p pokemon_data
 # Maximum number of concurrent processes
 MAX_PARALLEL=3
 
+# Array to store background PIDs
+declare -a PIDS=()
+
+# Cleanup function
+cleanup() {
+    echo -e "\nCleaning up processes..."
+    # Kill all running background processes
+    for pid in "${PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+        fi
+    done
+    
+    # Remove temporary files
+    rm -f pokemon_data/.pid_*
+    exit 1
+}
+
+# Set up trap for cleanup
+trap cleanup SIGINT SIGTERM
+
 # Function to convert name to lowercase
 to_lowercase() {
     echo "$1" | tr '[:upper:]' '[:lower:]'
@@ -58,6 +79,12 @@ fetch_pokemon_data() {
 wait_for_processes() {
     local max_procs=$1
     while [ "$(jobs -r | wc -l)" -ge "$max_procs" ]; do
+        # Check if any tracked processes have finished
+        for pid in "${PIDS[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                PIDS=("${PIDS[@]/$pid}")
+            fi
+        done
         sleep 0.5
     done
 }
@@ -87,8 +114,9 @@ for pokemon in "${POKEMON[@]}"; do
     
     # Start fetch in background
     fetch_pokemon_data "$pokemon_lower" &
-    
-    echo "Started fetching data for $pokemon (PID: $!)"
+    pid=$!
+    PIDS+=("$pid")
+    echo "Started fetching data for $pokemon (PID: $pid)"
 done
 
 # Wait for all background processes to complete
