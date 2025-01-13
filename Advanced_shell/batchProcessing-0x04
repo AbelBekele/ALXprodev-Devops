@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# Define array of Pokemon
+POKEMON=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Define API base URL
+API_URL="https://pokeapi.co/api/v2/pokemon"
+
+# Create directory for Pokemon data if it doesn't exist
+mkdir -p pokemon_data
+
+# Maximum number of concurrent processes
+MAX_PARALLEL=3
+
+# Function to convert name to lowercase
+to_lowercase() {
+    echo "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# Function to make API request with retries
+fetch_pokemon_data() {
+    local pokemon=$1
+    local max_retries=3
+    local retry_count=0
+    local success=false
+    local pid_file="pokemon_data/.pid_${pokemon}"
+
+    while [ $retry_count -lt $max_retries ] && [ "$success" = false ]; do
+        echo "[$pokemon] Attempt $((retry_count + 1)) of $max_retries..." >&2
+        
+        # Make API request and save to json file
+        response=$(curl -s -w "%{http_code}" -o "pokemon_data/${pokemon}.json" "${API_URL}/${pokemon}")
+        
+        if [ "$response" -eq 200 ]; then
+            echo "[$pokemon] Successfully saved data" >&2
+            success=true
+            break
+        else
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo "[$pokemon] Request failed. Retrying in 2 seconds..." >&2
+                sleep 2
+            fi
+        fi
+    done
+
+    if [ "$success" = false ]; then
+        echo "[$pokemon] Error: Failed after $max_retries attempts." >&2
+        echo "Failed to fetch $pokemon after $max_retries attempts at $(date)" >> pokemon_data/errors.log
+        rm -f "pokemon_data/${pokemon}.json"
+        echo "failed" > "$pid_file"
+    else
+        echo "success" > "$pid_file"
+    fi
+}
+
+# Function to manage active processes
+wait_for_processes() {
+    local max_procs=$1
+    while [ "$(jobs -r | wc -l)" -ge "$max_procs" ]; do
+        sleep 0.5
+    done
+}
+
+# Function to check process results
+check_process_result() {
+    local pokemon=$1
+    local pid_file="pokemon_data/.pid_${pokemon}"
+    
+    if [ -f "$pid_file" ]; then
+        local status=$(cat "$pid_file")
+        rm -f "$pid_file"
+        if [ "$status" = "failed" ]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Main processing loop
+echo "Starting parallel Pokemon data fetching..."
+failed_pokemon=()
+
+for pokemon in "${POKEMON[@]}"; do
+    pokemon_lower=$(to_lowercase "$pokemon")
+    wait_for_processes $MAX_PARALLEL
+    
+    # Start fetch in background
+    fetch_pokemon_data "$pokemon_lower" &
+    
+    echo "Started fetching data for $pokemon (PID: $!)"
+done
+
+# Wait for all background processes to complete
+echo "Waiting for all processes to complete..."
+wait
+
+# Check results and collect failed Pokemon
+for pokemon in "${POKEMON[@]}"; do
+    pokemon_lower=$(to_lowercase "$pokemon")
+    if ! check_process_result "$pokemon_lower"; then
+        failed_pokemon+=("$pokemon")
+    fi
+done
+
+# Print summary
+echo -e "\nProcessing complete!"
+echo "Total Pokemon processed: ${#POKEMON[@]}"
+echo "Successfully fetched: $((${#POKEMON[@]} - ${#failed_pokemon[@]}))"
+if [ ${#failed_pokemon[@]} -gt 0 ]; then
+    echo "Failed Pokemon: ${failed_pokemon[*]}"
+fi
+
+# Cleanup temporary files
+rm -f pokemon_data/.pid_* 
