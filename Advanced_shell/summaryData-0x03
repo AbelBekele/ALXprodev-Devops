@@ -18,7 +18,7 @@ for file in pokemon_data/*.json; do
     # Skip if it's not a file
     [ -f "$file" ] || continue
     
-    # Extract data using jq and format with awk
+    # Extract data using jq, format with awk, and clean with sed
     jq -r '[.name, .height, .weight] | @csv' "$file" | \
     awk -F',' '{
         name = toupper(substr($1,1,1)) substr($1,2)
@@ -26,10 +26,10 @@ for file in pokemon_data/*.json; do
         height = $2/10
         weight = $3/10
         printf "%s,%.1f,%.1f\n", name, height, weight
-    }' >> "$CSV_FILE"
+    }' | sed 's/"//g' >> "$CSV_FILE"
 done
 
-# Calculate averages using awk
+# Calculate averages using awk and format with sed
 awk -F',' '
     NR > 1 {
         total_height += $2
@@ -41,7 +41,7 @@ awk -F',' '
         avg_weight = total_weight/count
         printf "Average Height: %.2f m\nAverage Weight: %.2f kg\nTotal Pokemon: %d\n", 
                avg_height, avg_weight, count
-    }' "$CSV_FILE" > "$STATS_FILE"
+    }' "$CSV_FILE" | sed 's/\([0-9]\)\./\1,/g' > "$STATS_FILE"
 
 # Print summary
 echo "Summary report generated:"
