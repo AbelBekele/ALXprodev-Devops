@@ -6,20 +6,19 @@ if [ ! -f "data.json" ]; then
     exit 1
 fi
 
-# Extract pokemon data using jq and format with awk
-jq -r '[.name, (.types[0].type.name), .weight, .height] | @csv' data.json | \
-awk -F',' '{
-    # Convert weight from hectograms to kg
-    weight = $3/10
-    # Convert height from decimeters to meters
-    height = $4/10
-    # Capitalize first letter of name
-    name = toupper(substr($1,1,1)) substr($1,2)
-    # Capitalize first letter of type
-    type = toupper(substr($2,1,1)) substr($2,2)
-    # Print formatted string
-    printf "%s is of type %s, weighs %gkg, and is %.1fm tall.\n", 
-           name, type, weight, height
-}' | \
-# Remove quotes if present
-sed 's/"//g' 
+# Extract name
+name=$(jq -r '.name' data.json | sed 's/./\u&/')
+
+# Extract type
+type=$(jq -r '.types[0].type.name' data.json | sed 's/./\u&/')
+
+# Extract and format weight (convert hectograms to kg)
+weight=$(jq -r '.weight' data.json)
+formatted_weight=$(echo "scale=1; $weight/10" | bc)
+
+# Extract and format height (convert decimeters to meters)
+height=$(jq -r '.height' data.json)
+formatted_height=$(echo "scale=1; $height/10" | bc)
+
+# Print the formatted string using the exact required format
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall." 
