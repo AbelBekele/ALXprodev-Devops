@@ -14,27 +14,57 @@ to_lowercase() {
     echo "$1" | tr '[:upper:]' '[:lower:]'
 }
 
-# Loop through each Pokemon
+# Function to make API request with retries
+fetch_pokemon_data() {
+    local pokemon=$1
+    local max_retries=3
+    local retry_count=0
+    local success=false
+
+    while [ $retry_count -lt $max_retries ] && [ "$success" = false ]; do
+        echo "Attempt $((retry_count + 1)) of $max_retries for $pokemon..."
+        
+        # Make API request and save to json file
+        response=$(curl -s -w "%{http_code}" -o "pokemon_data/${pokemon}.json" "${API_URL}/${pokemon}")
+        
+        if [ "$response" -eq 200 ]; then
+            echo "Successfully saved data for $pokemon to pokemon_data/${pokemon}.json"
+            success=true
+            break
+        else
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo "Request failed. Retrying in 2 seconds..."
+                sleep 2
+            fi
+        fi
+    done
+
+    if [ "$success" = false ]; then
+        echo "Error: Failed to fetch data for $pokemon after $max_retries attempts."
+        echo "Failed to fetch $pokemon after $max_retries attempts at $(date)" >> pokemon_data/errors.log
+        # Remove potentially incomplete JSON file
+        rm -f "pokemon_data/${pokemon}.json"
+        return 1
+    fi
+
+    return 0
+}
+
+# Main processing loop
 for pokemon in "${POKEMON[@]}"; do
     # Convert pokemon name to lowercase for API request
     pokemon_lower=$(to_lowercase "$pokemon")
     
-    echo "Fetching data for $pokemon..."
+    echo "Processing $pokemon..."
     
-    # Make API request and save to json file
-    response=$(curl -s -w "%{http_code}" -o "pokemon_data/${pokemon_lower}.json" "${API_URL}/${pokemon_lower}")
-    
-    # Check HTTP status code
-    if [ "$response" -eq 200 ]; then
-        echo "Successfully saved data for $pokemon to pokemon_data/${pokemon_lower}.json"
+    if fetch_pokemon_data "$pokemon_lower"; then
+        # Add delay to prevent rate limiting (1 second)
+        sleep 1
     else
-        echo "Error fetching data for $pokemon. Status code: $response"
-        # Log error to file
-        echo "Failed to fetch $pokemon at $(date)" >> pokemon_data/errors.log
+        echo "Skipping to next Pokemon..."
+        continue
     fi
-    
-    # Add delay to prevent rate limiting (1 second)
-    sleep 1
 done
 
 echo "Batch processing complete!" 
